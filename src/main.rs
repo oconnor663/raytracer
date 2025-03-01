@@ -6,7 +6,7 @@ use std::io::prelude::*;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use std::path::PathBuf;
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Vec3 {
     x: f64,
     y: f64,
@@ -94,6 +94,14 @@ impl Mul<f64> for Vec3 {
     }
 }
 
+impl Mul<Vec3> for f64 {
+    type Output = Vec3;
+
+    fn mul(self, rhs: Vec3) -> Vec3 {
+        rhs * self
+    }
+}
+
 impl MulAssign<f64> for Vec3 {
     fn mul_assign(&mut self, rhs: f64) {
         *self = *self * rhs;
@@ -132,6 +140,18 @@ pub fn write_color(mut output: impl Write, mut color: Color) -> anyhow::Result<(
         color.x as u64, color.y as u64, color.z as u64,
     )?;
     Ok(())
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Ray {
+    orig: Point,
+    dir: Vec3,
+}
+
+impl Ray {
+    pub fn at(self, t: f64) -> Point {
+        self.orig + t * self.dir
+    }
 }
 
 #[derive(Parser)]
