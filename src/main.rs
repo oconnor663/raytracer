@@ -154,8 +154,20 @@ impl Ray {
     }
 }
 
-fn ray_color(ray: Ray) -> Color {
-    let a = 0.5 * (ray.dir.unit_vector().y + 1.0);
+fn hit_sphere(center: Vec3, radius: f64, r: Ray) -> bool {
+    let oc = center - r.orig;
+    let a = r.dir.dot(r.dir);
+    let b = -2.0 * r.dir.dot(oc);
+    let c = oc.dot(oc) - radius * radius;
+    let discriminant = b * b - 4.0 * a * c;
+    discriminant >= 0.0
+}
+
+fn ray_color(r: Ray) -> Color {
+    if hit_sphere(Vec3::new(0.0, 0.0, -1.0), 0.5, r) {
+        return Color::new(2.0, 0.0, 0.0);
+    }
+    let a = 0.5 * (r.dir.unit_vector().y + 1.0);
     (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0)
 }
 
