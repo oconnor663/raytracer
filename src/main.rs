@@ -256,7 +256,9 @@ impl Hittable for Sphere {
     }
 }
 
-impl Hittable for Vec<Box<dyn Hittable>> {
+type World = Vec<Box<dyn Hittable>>;
+
+impl Hittable for World {
     fn hit(&self, r: Ray, mut t_range: Interval) -> Option<HitRecord> {
         let mut closest_so_far = None;
         for hittable in self {
@@ -270,7 +272,64 @@ impl Hittable for Vec<Box<dyn Hittable>> {
     }
 }
 
-fn ray_color(r: Ray, world: &Vec<Box<dyn Hittable>>) -> Color {
+struct Camera {
+    pub aspect_ratio: f64,
+    pub image_width: u64,
+}
+
+impl Camera {
+    fn image_height(&self) -> u64 {
+        (self.image_width as f64 / self.aspect_ratio) as u64
+    }
+
+    fn render(
+        &self,
+        world: &World,
+        mut outfile: impl Write,
+        progress_bar: Option<&indicatif::ProgressBar>,
+    ) -> anyhow::Result<()> {
+        let focal_length: f64 = 1.0;
+        let viewport_height = 2.0;
+        let viewport_width = viewport_height * self.image_width as f64 / self.image_height() as f64;
+        let camera_center = Point::new(0.0, 0.0, 0.0);
+        let viewport_u = Vec3::new(viewport_width, 0.0, 0.0);
+        let viewport_v = Vec3::new(0.0, -viewport_height, 0.0);
+        let pixel_delta_u = viewport_u / self.image_width as f64;
+        let pixel_delta_v = viewport_v / self.image_height() as f64;
+        let viewport_upper_left =
+            camera_center - Vec3::new(0.0, 0.0, focal_length) - viewport_u / 2.0 - viewport_v / 2.0;
+        let pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+
+        write!(
+            outfile,
+            "P3\n{} {}\n255\n",
+            self.image_width,
+            self.image_height(),
+        )?;
+
+        for j in 0..self.image_height() {
+            for i in 0..self.image_width {
+                let pixel_center =
+                    pixel00_loc + (i as f64 * pixel_delta_u) + (j as f64 * pixel_delta_v);
+                let ray_direction = pixel_center - camera_center;
+                let r = Ray {
+                    orig: camera_center,
+                    dir: ray_direction,
+                };
+                let color = ray_color(r, &world);
+                write_color(&mut outfile, color)?;
+            }
+            if let Some(bar) = &progress_bar {
+                bar.inc(1);
+            }
+        }
+
+        outfile.flush()?;
+        Ok(())
+    }
+}
+
+fn ray_color(r: Ray, world: &World) -> Color {
     if let Some(hit) = world.hit(r, Interval::positive()) {
         return 0.5 * (hit.normal + Color::new(1.0, 1.0, 1.0));
     }
@@ -284,28 +343,27 @@ struct Args {
     path: Option<PathBuf>,
 }
 
-const IMAGE_WIDTH: u64 = 400;
-const ASPECT_RATIO: f64 = 16.0 / 9.0;
-const IMAGE_HEIGHT: u64 = (IMAGE_WIDTH as f64 / ASPECT_RATIO) as u64;
-const FOCAL_LENGTH: f64 = 1.0;
-const VIEWPORT_HEIGHT: f64 = 2.0;
-const VIEWPORT_WIDTH: f64 = VIEWPORT_HEIGHT * IMAGE_WIDTH as f64 / IMAGE_HEIGHT as f64;
-const CAMERA_CENTER: Vec3 = Point::new(0.0, 0.0, 0.0);
-
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let mut outfile: Box<dyn Write>;
-    let bar;
-    if let Some(path) = args.path {
-        outfile = Box::new(BufWriter::new(File::create(path)?));
-        bar = None;
-    } else {
-        outfile = Box::new(std::io::stdout());
-        bar = Some(indicatif::ProgressBar::new(IMAGE_HEIGHT));
+    let image_width = 400;
+    let aspect_ratio = 16.0 / 9.0;
+    let camera = Camera {
+        image_width,
+        aspect_ratio,
     };
 
-    let mut world: Vec<Box<dyn Hittable>> = Vec::new();
+    let mut outfile: Box<dyn Write>;
+    let progress_bar;
+    if let Some(path) = args.path {
+        outfile = Box::new(BufWriter::new(File::create(path)?));
+        progress_bar = None;
+    } else {
+        outfile = Box::new(std::io::stdout());
+        progress_bar = Some(indicatif::ProgressBar::new(camera.image_height()));
+    };
+
+    let mut world: World = Vec::new();
     world.push(Box::new(Sphere {
         center: Point::new(0.0, 0.0, -1.0),
         radius: 0.5,
@@ -315,32 +373,7 @@ fn main() -> anyhow::Result<()> {
         radius: 100.0,
     }));
 
-    let viewport_u = Vec3::new(VIEWPORT_WIDTH, 0.0, 0.0);
-    let viewport_v = Vec3::new(0.0, -VIEWPORT_HEIGHT, 0.0);
-    let pixel_delta_u = viewport_u / IMAGE_WIDTH as f64;
-    let pixel_delta_v = viewport_v / IMAGE_HEIGHT as f64;
-    let viewport_upper_left =
-        CAMERA_CENTER - Vec3::new(0.0, 0.0, FOCAL_LENGTH) - viewport_u / 2.0 - viewport_v / 2.0;
-    let pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
-
-    write!(outfile, "P3\n{IMAGE_WIDTH} {IMAGE_HEIGHT}\n255\n")?;
-
-    for j in 0..IMAGE_HEIGHT {
-        for i in 0..IMAGE_WIDTH {
-            let pixel_center =
-                pixel00_loc + (i as f64 * pixel_delta_u) + (j as f64 * pixel_delta_v);
-            let ray_direction = pixel_center - CAMERA_CENTER;
-            let r = Ray {
-                orig: CAMERA_CENTER,
-                dir: ray_direction,
-            };
-            let color = ray_color(r, &world);
-            write_color(&mut outfile, color)?;
-        }
-        if let Some(bar) = &bar {
-            bar.inc(1);
-        }
-    }
+    camera.render(&world, &mut outfile, progress_bar.as_ref())?;
 
     outfile.flush()?;
 
