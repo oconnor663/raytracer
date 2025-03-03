@@ -21,6 +21,10 @@ impl Vec3 {
         Self { x, y, z }
     }
 
+    const fn zero() -> Self {
+        Self::new(0.0, 0.0, 0.0)
+    }
+
     fn length_squared(self) -> f64 {
         self.x * self.x + self.y * self.y + self.z * self.z
     }
@@ -297,14 +301,22 @@ impl Camera {
 
         for j in 0..self.image_height() {
             for i in 0..self.image_width {
-                let pixel_center =
-                    pixel00_loc + (i as f64 * pixel_delta_u) + (j as f64 * pixel_delta_v);
-                let ray_direction = pixel_center - camera_center;
-                let r = Ray {
-                    orig: camera_center,
-                    dir: ray_direction,
-                };
-                let color = ray_color(r, &world);
+                let samples_per_pixel = 100;
+                let mut color = Color::zero();
+                for _ in 0..samples_per_pixel {
+                    let x_random_offset = rand::random::<f64>() - 0.5;
+                    let y_random_offset = rand::random::<f64>() - 0.5;
+                    let pixel_center = pixel00_loc
+                        + ((i as f64 + x_random_offset) * pixel_delta_u)
+                        + ((j as f64 + y_random_offset) * pixel_delta_v);
+                    let ray_direction = pixel_center - camera_center;
+                    let r = Ray {
+                        orig: camera_center,
+                        dir: ray_direction,
+                    };
+                    color += ray_color(r, &world);
+                }
+                color /= samples_per_pixel as f64;
                 write_color(&mut outfile, color)?;
             }
             if let Some(bar) = &progress_bar {
