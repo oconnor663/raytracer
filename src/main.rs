@@ -364,14 +364,18 @@ fn ray_color(r: Ray, world: &World, remaining_bounces: u64) -> Color {
     (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0)
 }
 
+fn linear_to_gamma(linear: f64) -> f64 {
+    if linear > 0.0 { linear.sqrt() } else { 0.0 }
+}
+
 fn write_color(mut output: impl Write, color: Color) -> anyhow::Result<()> {
     let intensity = Interval {
         min: 0.0,
         max: 0.999,
     };
-    let red = (256.0 * intensity.clamp(color.x)) as u64;
-    let blue = (256.0 * intensity.clamp(color.y)) as u64;
-    let green = (256.0 * intensity.clamp(color.z)) as u64;
+    let red = (256.0 * intensity.clamp(linear_to_gamma(color.x))) as u64;
+    let blue = (256.0 * intensity.clamp(linear_to_gamma(color.y))) as u64;
+    let green = (256.0 * intensity.clamp(linear_to_gamma(color.z))) as u64;
     writeln!(output, "{red} {blue} {green}")?;
     Ok(())
 }
