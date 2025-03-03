@@ -140,16 +140,6 @@ impl fmt::Display for Vec3 {
     }
 }
 
-fn write_color(mut output: impl Write, mut color: Color) -> anyhow::Result<()> {
-    color *= 255.999;
-    writeln!(
-        output,
-        "{} {} {}",
-        color.x as u64, color.y as u64, color.z as u64,
-    )?;
-    Ok(())
-}
-
 #[derive(Copy, Clone, Debug)]
 struct Ray {
     orig: Point,
@@ -169,18 +159,12 @@ struct Interval {
 }
 
 impl Interval {
-    fn all() -> Self {
-        Self {
-            min: f64::MIN,
-            max: f64::MAX,
-        }
+    fn new(min: f64, max: f64) -> Self {
+        Self { min, max }
     }
 
     fn positive() -> Self {
-        Self {
-            min: 0.0,
-            max: f64::MAX,
-        }
+        Self::new(0.0, f64::MAX)
     }
 
     fn contains(self, value: f64) -> bool {
@@ -189,6 +173,10 @@ impl Interval {
 
     fn surrounds(self, value: f64) -> bool {
         self.min < value && value < self.max
+    }
+
+    fn clamp(self, value: f64) -> f64 {
+        value.clamp(self.min, self.max)
     }
 }
 
@@ -336,6 +324,18 @@ fn ray_color(r: Ray, world: &World) -> Color {
     // If we didn't hit anything, paint the blue sky background.
     let a = 0.5 * (r.dir.unit_vector().y + 1.0);
     (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0)
+}
+
+fn write_color(mut output: impl Write, color: Color) -> anyhow::Result<()> {
+    let intensity = Interval {
+        min: 0.0,
+        max: 0.999,
+    };
+    let red = (256.0 * intensity.clamp(color.x)) as u64;
+    let blue = (256.0 * intensity.clamp(color.y)) as u64;
+    let green = (256.0 * intensity.clamp(color.z)) as u64;
+    writeln!(output, "{red} {blue} {green}")?;
+    Ok(())
 }
 
 #[derive(Parser)]
