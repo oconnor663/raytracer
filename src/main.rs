@@ -167,11 +167,7 @@ impl Interval {
         Self { min, max }
     }
 
-    fn positive() -> Self {
-        Self::new(0.0, f64::MAX)
-    }
-
-    fn contains(self, value: f64) -> bool {
+    fn _contains(self, value: f64) -> bool {
         self.min <= value && value <= self.max
     }
 
@@ -189,7 +185,7 @@ struct HitRecord {
     point: Point,
     t: f64,
     normal: Vec3,
-    front_face: bool,
+    _front_face: bool,
 }
 
 impl HitRecord {
@@ -209,7 +205,7 @@ impl HitRecord {
             point,
             t,
             normal,
-            front_face,
+            _front_face: front_face,
         }
     }
 }
@@ -344,7 +340,7 @@ fn random_unit_vector() -> Vec3 {
     }
 }
 
-fn random_on_hemisphere(normal: Vec3) -> Vec3 {
+fn _random_on_hemisphere(normal: Vec3) -> Vec3 {
     let on_unit_sphere = random_unit_vector();
     if on_unit_sphere.dot(normal) > 0.0 {
         on_unit_sphere
@@ -360,7 +356,7 @@ fn ray_color(r: Ray, world: &World, remaining_bounces: u64) -> Color {
     // 0.001 here fixes "shadow acne".
     if let Some(hit) = world.hit(r, Interval::new(0.001, f64::MAX)) {
         let orig = hit.point;
-        let dir = random_on_hemisphere(hit.normal);
+        let dir = hit.normal + random_unit_vector(); // Lambertian distribution
         return 0.5 * ray_color(Ray { orig, dir }, world, remaining_bounces - 1);
     }
     // If we didn't hit anything, paint the blue sky background.
