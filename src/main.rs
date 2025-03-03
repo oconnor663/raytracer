@@ -154,18 +154,26 @@ impl Ray {
     }
 }
 
-fn hit_sphere(center: Vec3, radius: f64, r: Ray) -> bool {
+// returns `t`, which when multiplied by `r` gives one of the intersection points with the sphere
+// (or -1 if there is no intersection)
+fn hit_sphere(center: Vec3, radius: f64, r: Ray) -> f64 {
     let oc = center - r.orig;
     let a = r.dir.dot(r.dir);
     let b = -2.0 * r.dir.dot(oc);
     let c = oc.dot(oc) - radius * radius;
     let discriminant = b * b - 4.0 * a * c;
-    discriminant >= 0.0
+    if discriminant < 0.0 {
+        -1.0
+    } else {
+        (-b - discriminant.sqrt()) / (2.0 * a)
+    }
 }
 
 fn ray_color(r: Ray) -> Color {
-    if hit_sphere(Vec3::new(0.0, 0.0, -1.0), 0.5, r) {
-        return Color::new(2.0, 0.0, 0.0);
+    let t = hit_sphere(Vec3::new(0.0, 0.0, -1.0), 0.5, r);
+    if t > 0.0 {
+        let normal = (r.at(t) - Vec3::new(0.0, 0.0, -1.0)).unit_vector();
+        return 0.5 * Color::new(normal.x + 1.0, normal.y + 1.0, normal.z + 1.0);
     }
     let a = 0.5 * (r.dir.unit_vector().y + 1.0);
     (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0)
