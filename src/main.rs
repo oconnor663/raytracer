@@ -3,37 +3,37 @@ use std::fmt;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::prelude::*;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::path::PathBuf;
 
 #[derive(Debug, Copy, Clone)]
-pub struct Vec3 {
+struct Vec3 {
     x: f64,
     y: f64,
     z: f64,
 }
 
-pub type Point = Vec3;
-pub type Color = Vec3;
+type Point = Vec3;
+type Color = Vec3;
 
 impl Vec3 {
-    pub const fn new(x: f64, y: f64, z: f64) -> Self {
+    const fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
     }
 
-    pub fn length_squared(self) -> f64 {
+    fn length_squared(self) -> f64 {
         self.x * self.x + self.y * self.y + self.z * self.z
     }
 
-    pub fn length(self) -> f64 {
+    fn length(self) -> f64 {
         self.length_squared().sqrt()
     }
 
-    pub fn dot(self, rhs: Vec3) -> f64 {
+    fn dot(self, rhs: Vec3) -> f64 {
         self.x * rhs.x + self.y * rhs.y + self.z * rhs.z
     }
 
-    pub fn cross(self, rhs: Vec3) -> Self {
+    fn _cross(self, rhs: Vec3) -> Self {
         Self {
             x: self.y * rhs.z - self.z * rhs.y,
             y: self.z * rhs.x - self.x * rhs.z,
@@ -41,7 +41,7 @@ impl Vec3 {
         }
     }
 
-    pub fn unit_vector(self) -> Self {
+    fn unit_vector(self) -> Self {
         self / self.length()
     }
 }
@@ -64,15 +64,23 @@ impl AddAssign for Vec3 {
     }
 }
 
+impl Neg for Vec3 {
+    type Output = Vec3;
+
+    fn neg(self) -> Vec3 {
+        Vec3 {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
+    }
+}
+
 impl Sub for Vec3 {
     type Output = Vec3;
 
     fn sub(self, rhs: Vec3) -> Vec3 {
-        Vec3 {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-            z: self.z - rhs.z,
-        }
+        self + (-rhs)
     }
 }
 
@@ -132,7 +140,7 @@ impl fmt::Display for Vec3 {
     }
 }
 
-pub fn write_color(mut output: impl Write, mut color: Color) -> anyhow::Result<()> {
+fn write_color(mut output: impl Write, mut color: Color) -> anyhow::Result<()> {
     color *= 255.999;
     writeln!(
         output,
@@ -143,38 +151,100 @@ pub fn write_color(mut output: impl Write, mut color: Color) -> anyhow::Result<(
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Ray {
+struct Ray {
     orig: Point,
     dir: Vec3,
 }
 
 impl Ray {
-    pub fn at(self, t: f64) -> Point {
+    fn at(self, t: f64) -> Point {
         self.orig + t * self.dir
     }
 }
 
-// returns `t`, which when multiplied by `r` gives one of the intersection points with the sphere
-// (or -1 if there is no intersection)
-fn hit_sphere(center: Vec3, radius: f64, r: Ray) -> f64 {
-    let oc = center - r.orig;
-    let a = r.dir.length_squared();
-    let h = r.dir.dot(oc);
-    let c = oc.length_squared() - radius * radius;
-    let discriminant = h * h - a * c;
-    if discriminant < 0.0 {
-        -1.0
-    } else {
-        (h - discriminant.sqrt()) / a
+#[derive(Copy, Clone, Debug)]
+struct HitRecord {
+    point: Point,
+    t: f64,
+    normal: Vec3,
+    front_face: bool,
+}
+
+impl HitRecord {
+    fn new(point: Point, t: f64, r: Ray, outward_normal: Vec3) -> Self {
+        debug_assert_eq!(
+            outward_normal.length() as f32, // approximate
+            1.0,
+            "should be a unit vector",
+        );
+        let front_face = r.dir.dot(outward_normal) < 0.0;
+        let normal = if front_face {
+            outward_normal
+        } else {
+            -outward_normal
+        };
+        Self {
+            point,
+            t,
+            normal,
+            front_face,
+        }
     }
 }
 
-fn ray_color(r: Ray) -> Color {
-    let t = hit_sphere(Vec3::new(0.0, 0.0, -1.0), 0.5, r);
-    if t > 0.0 {
-        let normal = (r.at(t) - Vec3::new(0.0, 0.0, -1.0)).unit_vector();
-        return 0.5 * Color::new(normal.x + 1.0, normal.y + 1.0, normal.z + 1.0);
+trait Hittable {
+    fn hit(&self, r: Ray, t_min: f64, t_max: f64) -> Option<HitRecord>;
+}
+
+struct Sphere {
+    center: Point,
+    radius: f64,
+}
+
+impl Hittable for Sphere {
+    fn hit(&self, r: Ray, t_min: f64, t_max: f64) -> Option<HitRecord> {
+        let oc = self.center - r.orig;
+        let a = r.dir.length_squared();
+        let h = r.dir.dot(oc);
+        let c = oc.length_squared() - self.radius * self.radius;
+        let discriminant = h * h - a * c;
+        if discriminant < 0.0 {
+            return None;
+        }
+        let discriminant_sqrt = discriminant.sqrt();
+        let mut root = (h - discriminant_sqrt) / a;
+        if !(t_min..=t_max).contains(&root) {
+            root = (h + discriminant_sqrt) / a;
+        }
+        if !(t_min..=t_max).contains(&root) {
+            return None;
+        }
+        let t = root;
+        let point = r.at(t);
+        let outward_normal = (point - self.center) / self.radius;
+        Some(HitRecord::new(point, t, r, outward_normal))
     }
+}
+
+impl Hittable for Vec<Box<dyn Hittable>> {
+    fn hit(&self, r: Ray, t_min: f64, mut t_max: f64) -> Option<HitRecord> {
+        let mut closest_so_far = None;
+        for hittable in self {
+            if let Some(hit) = hittable.hit(r, t_min, t_max) {
+                assert!(hit.t <= t_max);
+                t_max = hit.t;
+                closest_so_far = Some(hit);
+            }
+        }
+        closest_so_far
+    }
+}
+
+fn ray_color(r: Ray, world: &Vec<Box<dyn Hittable>>) -> Color {
+    if let Some(hit) = world.hit(r, 0.0, f64::MAX) {
+        return 0.5 * (hit.normal + Color::new(1.0, 1.0, 1.0));
+    }
+    // If we didn't hit anything, paint the blue sky background.
     let a = 0.5 * (r.dir.unit_vector().y + 1.0);
     (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0)
 }
@@ -205,6 +275,16 @@ fn main() -> anyhow::Result<()> {
         bar = Some(indicatif::ProgressBar::new(IMAGE_HEIGHT));
     };
 
+    let mut world: Vec<Box<dyn Hittable>> = Vec::new();
+    world.push(Box::new(Sphere {
+        center: Point::new(0.0, 0.0, -1.0),
+        radius: 0.5,
+    }));
+    world.push(Box::new(Sphere {
+        center: Point::new(0.0, -100.5, -1.0),
+        radius: 100.0,
+    }));
+
     let viewport_u = Vec3::new(VIEWPORT_WIDTH, 0.0, 0.0);
     let viewport_v = Vec3::new(0.0, -VIEWPORT_HEIGHT, 0.0);
     let pixel_delta_u = viewport_u / IMAGE_WIDTH as f64;
@@ -224,7 +304,7 @@ fn main() -> anyhow::Result<()> {
                 orig: CAMERA_CENTER,
                 dir: ray_direction,
             };
-            let color = ray_color(r);
+            let color = ray_color(r, &world);
             write_color(&mut outfile, color)?;
         }
         if let Some(bar) = &bar {
