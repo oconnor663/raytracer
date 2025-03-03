@@ -314,7 +314,8 @@ impl Camera {
                         orig: camera_center,
                         dir: ray_direction,
                     };
-                    color += ray_color(r, &world);
+                    let max_bounces = 10;
+                    color += ray_color(r, &world, max_bounces);
                 }
                 color /= samples_per_pixel as f64;
                 write_color(&mut outfile, color)?;
@@ -329,9 +330,38 @@ impl Camera {
     }
 }
 
-fn ray_color(r: Ray, world: &World) -> Color {
-    if let Some(hit) = world.hit(r, Interval::positive()) {
-        return 0.5 * (hit.normal + Color::new(1.0, 1.0, 1.0));
+fn random_unit_vector() -> Vec3 {
+    loop {
+        let p = Point {
+            x: rand::random_range(-1.0..1.0),
+            y: rand::random_range(-1.0..1.0),
+            z: rand::random_range(-1.0..1.0),
+        };
+        let lensq = p.length_squared();
+        if 0.0 < lensq && lensq <= 1.0 {
+            return p / lensq;
+        }
+    }
+}
+
+fn random_on_hemisphere(normal: Vec3) -> Vec3 {
+    let on_unit_sphere = random_unit_vector();
+    if on_unit_sphere.dot(normal) > 0.0 {
+        on_unit_sphere
+    } else {
+        -on_unit_sphere
+    }
+}
+
+fn ray_color(r: Ray, world: &World, remaining_bounces: u64) -> Color {
+    if remaining_bounces == 0 {
+        return Color::zero();
+    }
+    // 0.001 here fixes "shadow acne".
+    if let Some(hit) = world.hit(r, Interval::new(0.001, f64::MAX)) {
+        let orig = hit.point;
+        let dir = random_on_hemisphere(hit.normal);
+        return 0.5 * ray_color(Ray { orig, dir }, world, remaining_bounces - 1);
     }
     // If we didn't hit anything, paint the blue sky background.
     let a = 0.5 * (r.dir.unit_vector().y + 1.0);
