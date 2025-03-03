@@ -162,6 +162,36 @@ impl Ray {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Interval {
+    min: f64,
+    max: f64,
+}
+
+impl Interval {
+    fn all() -> Self {
+        Self {
+            min: f64::MIN,
+            max: f64::MAX,
+        }
+    }
+
+    fn positive() -> Self {
+        Self {
+            min: 0.0,
+            max: f64::MAX,
+        }
+    }
+
+    fn contains(self, value: f64) -> bool {
+        self.min <= value && value <= self.max
+    }
+
+    fn surrounds(self, value: f64) -> bool {
+        self.min < value && value < self.max
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 struct HitRecord {
     point: Point,
@@ -193,7 +223,7 @@ impl HitRecord {
 }
 
 trait Hittable {
-    fn hit(&self, r: Ray, t_min: f64, t_max: f64) -> Option<HitRecord>;
+    fn hit(&self, r: Ray, t_range: Interval) -> Option<HitRecord>;
 }
 
 struct Sphere {
@@ -202,7 +232,7 @@ struct Sphere {
 }
 
 impl Hittable for Sphere {
-    fn hit(&self, r: Ray, t_min: f64, t_max: f64) -> Option<HitRecord> {
+    fn hit(&self, r: Ray, t_range: Interval) -> Option<HitRecord> {
         let oc = self.center - r.orig;
         let a = r.dir.length_squared();
         let h = r.dir.dot(oc);
@@ -213,10 +243,10 @@ impl Hittable for Sphere {
         }
         let discriminant_sqrt = discriminant.sqrt();
         let mut root = (h - discriminant_sqrt) / a;
-        if !(t_min..=t_max).contains(&root) {
+        if !t_range.surrounds(root) {
             root = (h + discriminant_sqrt) / a;
         }
-        if !(t_min..=t_max).contains(&root) {
+        if !t_range.surrounds(root) {
             return None;
         }
         let t = root;
@@ -227,12 +257,12 @@ impl Hittable for Sphere {
 }
 
 impl Hittable for Vec<Box<dyn Hittable>> {
-    fn hit(&self, r: Ray, t_min: f64, mut t_max: f64) -> Option<HitRecord> {
+    fn hit(&self, r: Ray, mut t_range: Interval) -> Option<HitRecord> {
         let mut closest_so_far = None;
         for hittable in self {
-            if let Some(hit) = hittable.hit(r, t_min, t_max) {
-                assert!(hit.t <= t_max);
-                t_max = hit.t;
+            if let Some(hit) = hittable.hit(r, t_range) {
+                assert!(hit.t <= t_range.max);
+                t_range.max = hit.t;
                 closest_so_far = Some(hit);
             }
         }
@@ -241,7 +271,7 @@ impl Hittable for Vec<Box<dyn Hittable>> {
 }
 
 fn ray_color(r: Ray, world: &Vec<Box<dyn Hittable>>) -> Color {
-    if let Some(hit) = world.hit(r, 0.0, f64::MAX) {
+    if let Some(hit) = world.hit(r, Interval::positive()) {
         return 0.5 * (hit.normal + Color::new(1.0, 1.0, 1.0));
     }
     // If we didn't hit anything, paint the blue sky background.
