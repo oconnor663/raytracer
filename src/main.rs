@@ -48,6 +48,23 @@ impl Vec3 {
     fn unit_vector(self) -> Self {
         self / self.length()
     }
+
+    fn near_zero(self) -> bool {
+        let s = 1e-8;
+        self.x.abs() < s && self.y.abs() < s && self.z.abs() < s
+    }
+
+    fn reflect(self, normal: Self) -> Self {
+        self - 2.0 * self.dot(normal) * normal
+    }
+
+    fn elementwise_mul(self, rhs: Self) -> Self {
+        Self {
+            x: self.x * rhs.x,
+            y: self.y * rhs.y,
+            z: self.z * rhs.z,
+        }
+    }
 }
 
 impl Add for Vec3 {
@@ -186,10 +203,19 @@ struct HitRecord {
     t: f64,
     normal: Vec3,
     _front_face: bool,
+    material: Material,
+    attenuation: Color,
 }
 
 impl HitRecord {
-    fn new(point: Point, t: f64, r: Ray, outward_normal: Vec3) -> Self {
+    fn new(
+        point: Point,
+        t: f64,
+        r: Ray,
+        outward_normal: Vec3,
+        material: Material,
+        attenuation: Color,
+    ) -> Self {
         debug_assert_eq!(
             outward_normal.length() as f32, // approximate
             1.0,
@@ -206,6 +232,8 @@ impl HitRecord {
             t,
             normal,
             _front_face: front_face,
+            material,
+            attenuation,
         }
     }
 }
@@ -213,6 +241,8 @@ impl HitRecord {
 struct Sphere {
     center: Point,
     radius: f64,
+    attenuation: Color,
+    material: Material,
 }
 
 impl Sphere {
@@ -236,7 +266,14 @@ impl Sphere {
         let t = root;
         let point = r.at(t);
         let outward_normal = (point - self.center) / self.radius;
-        Some(HitRecord::new(point, t, r, outward_normal))
+        Some(HitRecord::new(
+            point,
+            t,
+            r,
+            outward_normal,
+            self.material,
+            self.attenuation,
+        ))
     }
 }
 
@@ -248,6 +285,31 @@ impl Hittable {
     fn hit(&self, r: Ray, t_range: Interval) -> Option<HitRecord> {
         match self {
             Hittable::Sphere(sphere) => sphere.hit(r, t_range),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum Material {
+    Lambertian,
+    Metal,
+}
+
+impl Material {
+    fn scatter(self, r_in: Ray, hit: HitRecord) -> Option<Ray> {
+        let orig = hit.point;
+        match self {
+            Material::Lambertian => {
+                let mut dir = hit.normal + random_unit_vector();
+                if dir.near_zero() {
+                    dir = hit.normal;
+                }
+                Some(Ray { orig, dir })
+            }
+            Material::Metal => {
+                let dir = r_in.dir.reflect(hit.normal);
+                Some(Ray { orig, dir })
+            }
         }
     }
 }
@@ -373,9 +435,12 @@ fn ray_color(r: Ray, world: &World, remaining_bounces: u64) -> Color {
     }
     // 0.001 here fixes "shadow acne".
     if let Some(hit) = world.hit(r, Interval::new(0.001, f64::MAX)) {
-        let orig = hit.point;
-        let dir = hit.normal + random_unit_vector(); // Lambertian distribution
-        return 0.5 * ray_color(Ray { orig, dir }, world, remaining_bounces - 1);
+        if let Some(scatter) = hit.material.scatter(r, hit) {
+            let color = ray_color(scatter, world, remaining_bounces - 1);
+            return hit.attenuation.elementwise_mul(color);
+        } else {
+            return Color::zero();
+        }
     }
     // If we didn't hit anything, paint the blue sky background.
     let a = 0.5 * (r.dir.unit_vector().y + 1.0);
@@ -425,12 +490,28 @@ fn main() -> anyhow::Result<()> {
 
     let mut world: World = World::new();
     world.hittables.push(Hittable::Sphere(Sphere {
-        center: Point::new(0.0, 0.0, -1.0),
-        radius: 0.5,
-    }));
-    world.hittables.push(Hittable::Sphere(Sphere {
         center: Point::new(0.0, -100.5, -1.0),
         radius: 100.0,
+        attenuation: Color::new(0.8, 0.8, 0.0),
+        material: Material::Lambertian,
+    }));
+    world.hittables.push(Hittable::Sphere(Sphere {
+        center: Point::new(0.0, 0.0, -1.2),
+        radius: 0.5,
+        attenuation: Color::new(0.1, 0.2, 0.5),
+        material: Material::Lambertian,
+    }));
+    world.hittables.push(Hittable::Sphere(Sphere {
+        center: Point::new(-1.0, 0.0, -1.0),
+        radius: 0.5,
+        attenuation: Color::new(0.8, 0.8, 0.8),
+        material: Material::Metal,
+    }));
+    world.hittables.push(Hittable::Sphere(Sphere {
+        center: Point::new(1.0, 0.0, -1.0),
+        radius: 0.5,
+        attenuation: Color::new(0.8, 0.6, 0.2),
+        material: Material::Metal,
     }));
 
     camera.render(&world, &mut outfile, progress_bar.as_ref())?;
