@@ -1,4 +1,5 @@
 use clap::Parser;
+use riddance::Registry;
 use std::fmt;
 use std::fs::File;
 use std::io::BufWriter;
@@ -315,13 +316,13 @@ impl Material {
 }
 
 struct World {
-    hittables: Vec<Hittable>,
+    hittables: Registry<Hittable>,
 }
 
 impl World {
     fn new() -> Self {
         Self {
-            hittables: Vec::new(),
+            hittables: Registry::new(),
         }
     }
 }
@@ -329,7 +330,7 @@ impl World {
 impl World {
     fn hit(&self, r: Ray, mut t_range: Interval) -> Option<HitRecord> {
         let mut closest_so_far = None;
-        for hittable in &self.hittables {
+        for hittable in self.hittables.values() {
             if let Some(hit) = hittable.hit(r, t_range) {
                 assert!(hit.t <= t_range.max);
                 t_range.max = hit.t;
@@ -489,25 +490,25 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut world: World = World::new();
-    world.hittables.push(Hittable::Sphere(Sphere {
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(0.0, -100.5, -1.0),
         radius: 100.0,
         attenuation: Color::new(0.8, 0.8, 0.0),
         material: Material::Lambertian,
     }));
-    world.hittables.push(Hittable::Sphere(Sphere {
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(0.0, 0.0, -1.2),
         radius: 0.5,
         attenuation: Color::new(0.1, 0.2, 0.5),
         material: Material::Lambertian,
     }));
-    world.hittables.push(Hittable::Sphere(Sphere {
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(-1.0, 0.0, -1.0),
         radius: 0.5,
         attenuation: Color::new(0.8, 0.8, 0.8),
         material: Material::Metal,
     }));
-    world.hittables.push(Hittable::Sphere(Sphere {
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(1.0, 0.0, -1.0),
         radius: 0.5,
         attenuation: Color::new(0.8, 0.6, 0.2),
