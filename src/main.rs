@@ -210,16 +210,12 @@ impl HitRecord {
     }
 }
 
-trait Hittable {
-    fn hit(&self, r: Ray, t_range: Interval) -> Option<HitRecord>;
-}
-
 struct Sphere {
     center: Point,
     radius: f64,
 }
 
-impl Hittable for Sphere {
+impl Sphere {
     fn hit(&self, r: Ray, t_range: Interval) -> Option<HitRecord> {
         let oc = self.center - r.orig;
         let a = r.dir.length_squared();
@@ -244,12 +240,34 @@ impl Hittable for Sphere {
     }
 }
 
-type World = Vec<Box<dyn Hittable>>;
+enum Hittable {
+    Sphere(Sphere),
+}
 
-impl Hittable for World {
+impl Hittable {
+    fn hit(&self, r: Ray, t_range: Interval) -> Option<HitRecord> {
+        match self {
+            Hittable::Sphere(sphere) => sphere.hit(r, t_range),
+        }
+    }
+}
+
+struct World {
+    hittables: Vec<Hittable>,
+}
+
+impl World {
+    fn new() -> Self {
+        Self {
+            hittables: Vec::new(),
+        }
+    }
+}
+
+impl World {
     fn hit(&self, r: Ray, mut t_range: Interval) -> Option<HitRecord> {
         let mut closest_so_far = None;
-        for hittable in self {
+        for hittable in &self.hittables {
             if let Some(hit) = hittable.hit(r, t_range) {
                 assert!(hit.t <= t_range.max);
                 t_range.max = hit.t;
@@ -405,12 +423,12 @@ fn main() -> anyhow::Result<()> {
         progress_bar = Some(indicatif::ProgressBar::new(camera.image_height()));
     };
 
-    let mut world: World = Vec::new();
-    world.push(Box::new(Sphere {
+    let mut world: World = World::new();
+    world.hittables.push(Hittable::Sphere(Sphere {
         center: Point::new(0.0, 0.0, -1.0),
         radius: 0.5,
     }));
-    world.push(Box::new(Sphere {
+    world.hittables.push(Hittable::Sphere(Sphere {
         center: Point::new(0.0, -100.5, -1.0),
         radius: 100.0,
     }));
