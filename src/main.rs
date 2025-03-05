@@ -293,7 +293,7 @@ impl Hittable {
 #[derive(Copy, Clone, Debug)]
 enum Material {
     Lambertian,
-    Metal,
+    Metal { fuzz: f64 },
 }
 
 impl Material {
@@ -307,9 +307,15 @@ impl Material {
                 }
                 Some(Ray { orig, dir })
             }
-            Material::Metal => {
-                let dir = r_in.dir.reflect(hit.normal);
-                Some(Ray { orig, dir })
+            Material::Metal { fuzz } => {
+                let mut dir = r_in.dir.reflect(hit.normal);
+                dir = dir.unit_vector() + (fuzz * random_unit_vector());
+                if dir.dot(hit.normal) > 0.0 {
+                    Some(Ray { orig, dir })
+                } else {
+                    // Fuzziness pointed the reflection inwards.
+                    None
+                }
             }
         }
     }
@@ -506,13 +512,13 @@ fn main() -> anyhow::Result<()> {
         center: Point::new(-1.0, 0.0, -1.0),
         radius: 0.5,
         attenuation: Color::new(0.8, 0.8, 0.8),
-        material: Material::Metal,
+        material: Material::Metal { fuzz: 0.3 },
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(1.0, 0.0, -1.0),
         radius: 0.5,
         attenuation: Color::new(0.8, 0.6, 0.2),
-        material: Material::Metal,
+        material: Material::Metal { fuzz: 1.0 },
     }));
 
     camera.render(&world, &mut outfile, progress_bar.as_ref())?;
