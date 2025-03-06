@@ -450,7 +450,7 @@ impl Camera {
                         let p = random_in_unit_disk();
                         camera_center + p.x * defocus_disk_u + p.y * defocus_disk_v
                     };
-                    let ray_direction = pixel_center - camera_center;
+                    let ray_direction = pixel_center - ray_origin;
                     let r = Ray {
                         orig: ray_origin,
                         dir: ray_direction,
