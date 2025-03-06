@@ -1,4 +1,5 @@
 use clap::Parser;
+use rayon::prelude::*;
 use riddance::Registry;
 use std::fmt;
 use std::fs::File;
@@ -6,6 +7,7 @@ use std::io::BufWriter;
 use std::io::prelude::*;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 #[derive(Debug, Copy, Clone)]
 struct Vec3 {
@@ -418,6 +420,7 @@ impl Camera {
         &self,
         world: &World,
         mut outfile: impl Write,
+        progress_counter: &AtomicU64,
         progress_bar: Option<&indicatif::ProgressBar>,
     ) -> anyhow::Result<()> {
         let camera_center = self.lookfrom;
@@ -450,8 +453,15 @@ impl Camera {
             self.image_height(),
         )?;
 
+        let mut indexes = Vec::new();
         for j in 0..self.image_height() {
             for i in 0..self.image_width {
+                indexes.push((i, j));
+            }
+        }
+        let pixels: Vec<Color> = indexes
+            .into_par_iter()
+            .map(|(i, j)| {
                 let mut color = Color::zero();
                 for _ in 0..self.samples_per_pixel {
                     // Construct a camera ray originating from the defocus disk and directed at a
@@ -475,13 +485,19 @@ impl Camera {
                     color += ray_color(r, &world, self.max_bounces);
                 }
                 color /= self.samples_per_pixel as f64;
-                write_color(&mut outfile, color)?;
-            }
-            if let Some(bar) = &progress_bar {
-                bar.inc(1);
-            }
-        }
+                let progress = progress_counter.fetch_add(1, Relaxed);
+                if progress % PROGRESS_FRACTION == 0 {
+                    if let Some(bar) = &progress_bar {
+                        bar.inc(1);
+                    }
+                }
+                color
+            })
+            .collect();
 
+        for pixel in pixels {
+            write_color(&mut outfile, pixel)?;
+        }
         outfile.flush()?;
         Ok(())
     }
@@ -554,6 +570,9 @@ struct Args {
     path: Option<PathBuf>,
 }
 
+// Number of pixels rendered in between updates to the progress bar.
+const PROGRESS_FRACTION: u64 = 1024;
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -571,13 +590,21 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut outfile: Box<dyn Write>;
+    let progress_counter = AtomicU64::new(0);
     let progress_bar;
     if let Some(path) = args.path {
         outfile = Box::new(BufWriter::new(File::create(path)?));
         progress_bar = None;
     } else {
         outfile = Box::new(std::io::stdout());
-        progress_bar = Some(indicatif::ProgressBar::new(camera.image_height()));
+        let bar = indicatif::ProgressBar::new(
+            camera.image_width * camera.image_height() / PROGRESS_FRACTION,
+        );
+        bar.set_style(
+            indicatif::style::ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {wide_bar} {percent:>2}%")?,
+        );
+        progress_bar = Some(bar);
     };
 
     let mut world: World = World::new();
@@ -658,7 +685,12 @@ fn main() -> anyhow::Result<()> {
         material: Material::Metal { fuzz: 0.0 },
     }));
 
-    camera.render(&world, &mut outfile, progress_bar.as_ref())?;
+    camera.render(
+        &world,
+        &mut outfile,
+        &progress_counter,
+        progress_bar.as_ref(),
+    )?;
 
     outfile.flush()?;
 
