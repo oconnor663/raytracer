@@ -387,6 +387,8 @@ struct Camera {
     pub lookfrom: Point,
     pub lookat: Point,
     pub vup: Vec3,
+    pub defocus_angle: f64,
+    pub focus_distance: f64,
 }
 
 impl Camera {
@@ -401,10 +403,9 @@ impl Camera {
         progress_bar: Option<&indicatif::ProgressBar>,
     ) -> anyhow::Result<()> {
         let camera_center = self.lookfrom;
-        let focal_length = (self.lookfrom - self.lookat).length();
         let theta = self.vfov.to_radians();
         let h = (theta / 2.0).tan();
-        let viewport_height = 2.0 * h * focal_length;
+        let viewport_height = 2.0 * h * self.focus_distance;
         let viewport_width = viewport_height * self.image_width as f64 / self.image_height() as f64;
 
         // Calculate the u,v,w unit basis vectors for the camera coordinate frame.
@@ -417,8 +418,12 @@ impl Camera {
         let pixel_delta_u = viewport_u / self.image_width as f64;
         let pixel_delta_v = viewport_v / self.image_height() as f64;
         let viewport_upper_left =
-            camera_center - focal_length * w - viewport_u / 2.0 - viewport_v / 2.0;
+            camera_center - self.focus_distance * w - viewport_u / 2.0 - viewport_v / 2.0;
         let pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
+
+        let defocus_radius = self.focus_distance * (self.defocus_angle / 2.0).to_radians().tan();
+        let defocus_disk_u = u * defocus_radius;
+        let defocus_disk_v = v * defocus_radius;
 
         write!(
             outfile,
@@ -432,14 +437,22 @@ impl Camera {
                 let samples_per_pixel = 100;
                 let mut color = Color::zero();
                 for _ in 0..samples_per_pixel {
+                    // Construct a camera ray originating from the defocus disk and directed at a
+                    // randomly sampled point around the pixel location i, j.
                     let x_random_offset = rand::random::<f64>() - 0.5;
                     let y_random_offset = rand::random::<f64>() - 0.5;
                     let pixel_center = pixel00_loc
                         + ((i as f64 + x_random_offset) * pixel_delta_u)
                         + ((j as f64 + y_random_offset) * pixel_delta_v);
+                    let ray_origin = if self.defocus_angle <= 0.0 {
+                        camera_center
+                    } else {
+                        let p = random_in_unit_disk();
+                        camera_center + p.x * defocus_disk_u + p.y * defocus_disk_v
+                    };
                     let ray_direction = pixel_center - camera_center;
                     let r = Ray {
-                        orig: camera_center,
+                        orig: ray_origin,
                         dir: ray_direction,
                     };
                     let max_bounces = 10;
@@ -460,24 +473,29 @@ impl Camera {
 
 fn random_unit_vector() -> Vec3 {
     loop {
-        let p = Point {
+        let p = Vec3 {
             x: rand::random_range(-1.0..1.0),
             y: rand::random_range(-1.0..1.0),
             z: rand::random_range(-1.0..1.0),
         };
         let lensq = p.length_squared();
-        if 0.0 < lensq && lensq <= 1.0 {
-            return p / lensq;
+        if 1e-160 < lensq && lensq <= 1.0 {
+            return p / lensq.sqrt();
         }
     }
 }
 
-fn _random_on_hemisphere(normal: Vec3) -> Vec3 {
-    let on_unit_sphere = random_unit_vector();
-    if on_unit_sphere.dot(normal) > 0.0 {
-        on_unit_sphere
-    } else {
-        -on_unit_sphere
+fn random_in_unit_disk() -> Vec3 {
+    loop {
+        let p = Vec3 {
+            x: rand::random_range(-1.0..1.0),
+            y: rand::random_range(-1.0..1.0),
+            z: 0.0,
+        };
+        let lensq = p.length_squared();
+        if 1e-160 < lensq && lensq <= 1.0 {
+            return p / lensq.sqrt();
+        }
     }
 }
 
@@ -530,6 +548,8 @@ fn main() -> anyhow::Result<()> {
         lookfrom: Point::new(-2.0, 2.0, 1.0),
         lookat: Point::new(0.0, 0.0, -1.0),
         vup: Vec3::new(0.0, 1.0, 0.0),
+        defocus_angle: 10.0,
+        focus_distance: 3.4,
     };
 
     let mut outfile: Box<dyn Write>;
