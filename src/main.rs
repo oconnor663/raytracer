@@ -73,6 +73,22 @@ impl Vec3 {
             z: self.z * rhs.z,
         }
     }
+
+    fn random() -> Self {
+        Self {
+            x: rand::random(),
+            y: rand::random(),
+            z: rand::random(),
+        }
+    }
+
+    fn random_range(range: impl rand::distr::uniform::SampleRange<f64> + Clone) -> Self {
+        Self {
+            x: rand::random_range(range.clone()),
+            y: rand::random_range(range.clone()),
+            z: rand::random_range(range),
+        }
+    }
 }
 
 impl Add for Vec3 {
@@ -389,6 +405,8 @@ struct Camera {
     pub vup: Vec3,
     pub defocus_angle: f64,
     pub focus_distance: f64,
+    pub samples_per_pixel: u64,
+    pub max_bounces: u64,
 }
 
 impl Camera {
@@ -434,9 +452,8 @@ impl Camera {
 
         for j in 0..self.image_height() {
             for i in 0..self.image_width {
-                let samples_per_pixel = 100;
                 let mut color = Color::zero();
-                for _ in 0..samples_per_pixel {
+                for _ in 0..self.samples_per_pixel {
                     // Construct a camera ray originating from the defocus disk and directed at a
                     // randomly sampled point around the pixel location i, j.
                     let x_random_offset = rand::random::<f64>() - 0.5;
@@ -455,10 +472,9 @@ impl Camera {
                         orig: ray_origin,
                         dir: ray_direction,
                     };
-                    let max_bounces = 10;
-                    color += ray_color(r, &world, max_bounces);
+                    color += ray_color(r, &world, self.max_bounces);
                 }
-                color /= samples_per_pixel as f64;
+                color /= self.samples_per_pixel as f64;
                 write_color(&mut outfile, color)?;
             }
             if let Some(bar) = &progress_bar {
@@ -545,11 +561,13 @@ fn main() -> anyhow::Result<()> {
         image_width: 400,
         aspect_ratio: 16.0 / 9.0,
         vfov: 20.0,
-        lookfrom: Point::new(-2.0, 2.0, 1.0),
-        lookat: Point::new(0.0, 0.0, -1.0),
+        lookfrom: Point::new(13.0, 2.0, 3.0),
+        lookat: Point::zero(),
         vup: Vec3::new(0.0, 1.0, 0.0),
-        defocus_angle: 10.0,
-        focus_distance: 3.4,
+        defocus_angle: 0.6,
+        focus_distance: 10.0,
+        samples_per_pixel: 100,
+        max_bounces: 10,
     };
 
     let mut outfile: Box<dyn Write>;
@@ -563,39 +581,81 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut world: World = World::new();
+
+    // the ground
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(0.0, -100.5, -1.0),
-        radius: 100.0,
-        attenuation: Color::new(0.8, 0.8, 0.0),
+        center: Point::new(0.0, -1000.0, 0.0),
+        radius: 1000.0,
+        attenuation: Color::new(0.5, 0.5, 0.5),
         material: Material::Lambertian,
     }));
+
+    // lots of little spheres
+    for a in -11..11 {
+        for b in -11..11 {
+            let center = Point::new(
+                a as f64 + 0.9 * rand::random::<f64>(),
+                0.2,
+                b as f64 + 0.9 * rand::random::<f64>(),
+            );
+            if (center - Point::new(4.0, 0.2, 0.0)).length() > 0.9 {
+                match rand::random() {
+                    0.0..0.8 => {
+                        // diffuse
+                        _ = world.hittables.insert(Hittable::Sphere(Sphere {
+                            center,
+                            radius: 0.2,
+                            attenuation: Color::random().elementwise_mul(Color::random()),
+                            material: Material::Lambertian,
+                        }));
+                    }
+                    0.8..0.95 => {
+                        // metal
+                        _ = world.hittables.insert(Hittable::Sphere(Sphere {
+                            center,
+                            radius: 0.2,
+                            attenuation: Color::random_range(0.5..1.0),
+                            material: Material::Metal {
+                                fuzz: rand::random_range(0.0..0.5),
+                            },
+                        }));
+                    }
+                    _ => {
+                        // glass
+                        _ = world.hittables.insert(Hittable::Sphere(Sphere {
+                            center,
+                            radius: 0.2,
+                            attenuation: Color::new(1.0, 1.0, 1.0),
+                            material: Material::Dielectric {
+                                refraction_index: 1.5,
+                            },
+                        }));
+                    }
+                }
+            }
+        }
+    }
+
+    // three big spheres
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(0.0, 0.0, -1.2),
-        radius: 0.5,
-        attenuation: Color::new(0.1, 0.2, 0.5),
-        material: Material::Lambertian,
-    }));
-    _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(-1.0, 0.0, -1.0),
-        radius: 0.5,
+        center: Point::new(0.0, 1.0, 0.0),
+        radius: 1.0,
         attenuation: Color::new(1.0, 1.0, 1.0),
         material: Material::Dielectric {
             refraction_index: 1.5,
         },
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(-1.0, 0.0, -1.0),
-        radius: 0.4,
-        attenuation: Color::new(1.0, 1.0, 1.0),
-        material: Material::Dielectric {
-            refraction_index: 1.0 / 1.5,
-        },
+        center: Point::new(-4.0, 1.0, 0.0),
+        radius: 1.0,
+        attenuation: Color::new(0.4, 0.2, 0.1),
+        material: Material::Lambertian,
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(1.0, 0.0, -1.0),
-        radius: 0.5,
-        attenuation: Color::new(0.8, 0.6, 0.2),
-        material: Material::Metal { fuzz: 1.0 },
+        center: Point::new(4.0, 1.0, 0.0),
+        radius: 1.0,
+        attenuation: Color::new(0.7, 0.6, 0.5),
+        material: Material::Metal { fuzz: 0.0 },
     }));
 
     camera.render(&world, &mut outfile, progress_bar.as_ref())?;
