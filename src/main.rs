@@ -383,6 +383,7 @@ impl World {
 struct Camera {
     pub aspect_ratio: f64,
     pub image_width: u64,
+    pub vfov: f64,
 }
 
 impl Camera {
@@ -397,7 +398,9 @@ impl Camera {
         progress_bar: Option<&indicatif::ProgressBar>,
     ) -> anyhow::Result<()> {
         let focal_length: f64 = 1.0;
-        let viewport_height = 2.0;
+        let theta = self.vfov.to_radians();
+        let h = (theta / 2.0).tan();
+        let viewport_height = 2.0 * h * focal_length;
         let viewport_width = viewport_height * self.image_width as f64 / self.image_height() as f64;
         let camera_center = Point::new(0.0, 0.0, 0.0);
         let viewport_u = Vec3::new(viewport_width, 0.0, 0.0);
@@ -513,9 +516,11 @@ fn main() -> anyhow::Result<()> {
 
     let image_width = 400;
     let aspect_ratio = 16.0 / 9.0;
+    let vfov = 90.0;
     let camera = Camera {
         image_width,
         aspect_ratio,
+        vfov,
     };
 
     let mut outfile: Box<dyn Write>;
