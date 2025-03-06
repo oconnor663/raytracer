@@ -305,7 +305,7 @@ enum Material {
 }
 
 impl Material {
-    fn scatter(self, r_in: Ray, hit: HitRecord) -> Option<Ray> {
+    fn scatter(self, ray: Ray, hit: HitRecord) -> Option<Ray> {
         let orig = hit.point;
         match self {
             Material::Lambertian => {
@@ -316,7 +316,7 @@ impl Material {
                 Some(Ray { orig, dir })
             }
             Material::Metal { fuzz } => {
-                let mut dir = r_in.dir.reflect(hit.normal);
+                let mut dir = ray.dir.reflect(hit.normal);
                 dir = dir.unit_vector() + (fuzz * random_unit_vector());
                 if dir.dot(hit.normal) > 0.0 {
                     Some(Ray { orig, dir })
@@ -331,12 +331,17 @@ impl Material {
                 } else {
                     refraction_index
                 };
-                let unit_direction = r_in.dir.unit_vector();
-                let refracted = unit_direction.refract(hit.normal, ri);
-                Some(Ray {
-                    orig: hit.point,
-                    dir: refracted,
-                })
+                let unit_direction = ray.dir.unit_vector();
+                let cos_theta = unit_direction.dot(-hit.normal).min(1.0);
+                let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
+                let cannot_refract = ri * sin_theta > 1.0;
+                let orig = hit.point;
+                let dir = if cannot_refract {
+                    unit_direction.reflect(hit.normal)
+                } else {
+                    unit_direction.refract(hit.normal, ri)
+                };
+                Some(Ray { orig, dir })
             }
         }
     }
@@ -534,7 +539,7 @@ fn main() -> anyhow::Result<()> {
         radius: 0.5,
         attenuation: Color::new(1.0, 1.0, 1.0),
         material: Material::Dielectric {
-            refraction_index: 1.5,
+            refraction_index: 0.75,
         },
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
