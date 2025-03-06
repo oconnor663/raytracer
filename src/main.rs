@@ -59,6 +59,13 @@ impl Vec3 {
         self - 2.0 * self.dot(normal) * normal
     }
 
+    fn refract(self, normal: Self, etai_over_etat: f64) -> Self {
+        let cos_theta = self.dot(-normal).min(1.0);
+        let r_out_perp = etai_over_etat * (self + cos_theta * normal);
+        let r_out_parallel = -(1.0 - r_out_perp.length_squared()).abs().sqrt() * normal;
+        return r_out_perp + r_out_parallel;
+    }
+
     fn elementwise_mul(self, rhs: Self) -> Self {
         Self {
             x: self.x * rhs.x,
@@ -203,7 +210,7 @@ struct HitRecord {
     point: Point,
     t: f64,
     normal: Vec3,
-    _front_face: bool,
+    from_outside: bool,
     material: Material,
     attenuation: Color,
 }
@@ -222,8 +229,8 @@ impl HitRecord {
             1.0,
             "should be a unit vector",
         );
-        let front_face = r.dir.dot(outward_normal) < 0.0;
-        let normal = if front_face {
+        let from_outside = r.dir.dot(outward_normal) < 0.0;
+        let normal = if from_outside {
             outward_normal
         } else {
             -outward_normal
@@ -232,7 +239,7 @@ impl HitRecord {
             point,
             t,
             normal,
-            _front_face: front_face,
+            from_outside,
             material,
             attenuation,
         }
@@ -294,6 +301,7 @@ impl Hittable {
 enum Material {
     Lambertian,
     Metal { fuzz: f64 },
+    Dielectric { refraction_index: f64 },
 }
 
 impl Material {
@@ -316,6 +324,19 @@ impl Material {
                     // Fuzziness pointed the reflection inwards.
                     None
                 }
+            }
+            Material::Dielectric { refraction_index } => {
+                let ri = if hit.from_outside {
+                    1.0 / refraction_index
+                } else {
+                    refraction_index
+                };
+                let unit_direction = r_in.dir.unit_vector();
+                let refracted = unit_direction.refract(hit.normal, ri);
+                Some(Ray {
+                    orig: hit.point,
+                    dir: refracted,
+                })
             }
         }
     }
@@ -511,8 +532,10 @@ fn main() -> anyhow::Result<()> {
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(-1.0, 0.0, -1.0),
         radius: 0.5,
-        attenuation: Color::new(0.8, 0.8, 0.8),
-        material: Material::Metal { fuzz: 0.3 },
+        attenuation: Color::new(1.0, 1.0, 1.0),
+        material: Material::Dielectric {
+            refraction_index: 1.5,
+        },
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(1.0, 0.0, -1.0),
