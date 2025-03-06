@@ -38,7 +38,7 @@ impl Vec3 {
         self.x * rhs.x + self.y * rhs.y + self.z * rhs.z
     }
 
-    fn _cross(self, rhs: Vec3) -> Self {
+    fn cross(self, rhs: Vec3) -> Self {
         Self {
             x: self.y * rhs.z - self.z * rhs.y,
             y: self.z * rhs.x - self.x * rhs.z,
@@ -384,6 +384,9 @@ struct Camera {
     pub aspect_ratio: f64,
     pub image_width: u64,
     pub vfov: f64,
+    pub lookfrom: Point,
+    pub lookat: Point,
+    pub vup: Vec3,
 }
 
 impl Camera {
@@ -397,18 +400,24 @@ impl Camera {
         mut outfile: impl Write,
         progress_bar: Option<&indicatif::ProgressBar>,
     ) -> anyhow::Result<()> {
-        let focal_length: f64 = 1.0;
+        let camera_center = self.lookfrom;
+        let focal_length = (self.lookfrom - self.lookat).length();
         let theta = self.vfov.to_radians();
         let h = (theta / 2.0).tan();
         let viewport_height = 2.0 * h * focal_length;
         let viewport_width = viewport_height * self.image_width as f64 / self.image_height() as f64;
-        let camera_center = Point::new(0.0, 0.0, 0.0);
-        let viewport_u = Vec3::new(viewport_width, 0.0, 0.0);
-        let viewport_v = Vec3::new(0.0, -viewport_height, 0.0);
+
+        // Calculate the u,v,w unit basis vectors for the camera coordinate frame.
+        let w = (self.lookfrom - self.lookat).unit_vector();
+        let u = self.vup.cross(w).unit_vector();
+        let v = w.cross(u);
+
+        let viewport_u = viewport_width * u;
+        let viewport_v = viewport_height * -v;
         let pixel_delta_u = viewport_u / self.image_width as f64;
         let pixel_delta_v = viewport_v / self.image_height() as f64;
         let viewport_upper_left =
-            camera_center - Vec3::new(0.0, 0.0, focal_length) - viewport_u / 2.0 - viewport_v / 2.0;
+            camera_center - focal_length * w - viewport_u / 2.0 - viewport_v / 2.0;
         let pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
 
         write!(
@@ -514,13 +523,13 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let image_width = 400;
-    let aspect_ratio = 16.0 / 9.0;
-    let vfov = 90.0;
     let camera = Camera {
-        image_width,
-        aspect_ratio,
-        vfov,
+        image_width: 400,
+        aspect_ratio: 16.0 / 9.0,
+        vfov: 90.0,
+        lookfrom: Point::new(0.0, 0.0, 0.0),
+        lookat: Point::new(0.0, 0.0, -1.0),
+        vup: Vec3::new(0.0, 1.0, 0.0),
     };
 
     let mut outfile: Box<dyn Write>;
@@ -534,39 +543,18 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut world: World = World::new();
+    let r = (std::f64::consts::PI / 4.0).cos();
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(0.0, -100.5, -1.0),
-        radius: 100.0,
-        attenuation: Color::new(0.8, 0.8, 0.0),
+        center: Point::new(-r, 0.0, -1.0),
+        radius: r,
+        attenuation: Color::new(0.0, 0.0, 1.0),
         material: Material::Lambertian,
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(0.0, 0.0, -1.2),
-        radius: 0.5,
-        attenuation: Color::new(0.1, 0.2, 0.5),
+        center: Point::new(r, 0.0, -1.0),
+        radius: r,
+        attenuation: Color::new(1.0, 0.0, 0.0),
         material: Material::Lambertian,
-    }));
-    _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(-1.0, 0.0, -1.0),
-        radius: 0.5,
-        attenuation: Color::new(1.0, 1.0, 1.0),
-        material: Material::Dielectric {
-            refraction_index: 1.5,
-        },
-    }));
-    _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(-1.0, 0.0, -1.0),
-        radius: 0.4,
-        attenuation: Color::new(1.0, 1.0, 1.0),
-        material: Material::Dielectric {
-            refraction_index: 1.0 / 1.5,
-        },
-    }));
-    _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(1.0, 0.0, -1.0),
-        radius: 0.5,
-        attenuation: Color::new(0.8, 0.6, 0.2),
-        material: Material::Metal { fuzz: 1.0 },
     }));
 
     camera.render(&world, &mut outfile, progress_bar.as_ref())?;
