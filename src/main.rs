@@ -526,8 +526,8 @@ fn main() -> anyhow::Result<()> {
     let camera = Camera {
         image_width: 400,
         aspect_ratio: 16.0 / 9.0,
-        vfov: 90.0,
-        lookfrom: Point::new(0.0, 0.0, 0.0),
+        vfov: 20.0,
+        lookfrom: Point::new(-2.0, 2.0, 1.0),
         lookat: Point::new(0.0, 0.0, -1.0),
         vup: Vec3::new(0.0, 1.0, 0.0),
     };
@@ -543,18 +543,39 @@ fn main() -> anyhow::Result<()> {
     };
 
     let mut world: World = World::new();
-    let r = (std::f64::consts::PI / 4.0).cos();
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(-r, 0.0, -1.0),
-        radius: r,
-        attenuation: Color::new(0.0, 0.0, 1.0),
+        center: Point::new(0.0, -100.5, -1.0),
+        radius: 100.0,
+        attenuation: Color::new(0.8, 0.8, 0.0),
         material: Material::Lambertian,
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
-        center: Point::new(r, 0.0, -1.0),
-        radius: r,
-        attenuation: Color::new(1.0, 0.0, 0.0),
+        center: Point::new(0.0, 0.0, -1.2),
+        radius: 0.5,
+        attenuation: Color::new(0.1, 0.2, 0.5),
         material: Material::Lambertian,
+    }));
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
+        center: Point::new(-1.0, 0.0, -1.0),
+        radius: 0.5,
+        attenuation: Color::new(1.0, 1.0, 1.0),
+        material: Material::Dielectric {
+            refraction_index: 1.5,
+        },
+    }));
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
+        center: Point::new(-1.0, 0.0, -1.0),
+        radius: 0.4,
+        attenuation: Color::new(1.0, 1.0, 1.0),
+        material: Material::Dielectric {
+            refraction_index: 1.0 / 1.5,
+        },
+    }));
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
+        center: Point::new(1.0, 0.0, -1.0),
+        radius: 0.5,
+        attenuation: Color::new(0.8, 0.6, 0.2),
+        material: Material::Metal { fuzz: 1.0 },
     }));
 
     camera.render(&world, &mut outfile, progress_bar.as_ref())?;
