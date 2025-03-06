@@ -546,7 +546,15 @@ fn main() -> anyhow::Result<()> {
         radius: 0.5,
         attenuation: Color::new(1.0, 1.0, 1.0),
         material: Material::Dielectric {
-            refraction_index: 0.75,
+            refraction_index: 1.5,
+        },
+    }));
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
+        center: Point::new(-1.0, 0.0, -1.0),
+        radius: 0.4,
+        attenuation: Color::new(1.0, 1.0, 1.0),
+        material: Material::Dielectric {
+            refraction_index: 1.0 / 1.5,
         },
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
