@@ -558,7 +558,7 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let camera = Camera {
-        image_width: 400,
+        image_width: 1200,
         aspect_ratio: 16.0 / 9.0,
         vfov: 20.0,
         lookfrom: Point::new(13.0, 2.0, 3.0),
@@ -566,8 +566,8 @@ fn main() -> anyhow::Result<()> {
         vup: Vec3::new(0.0, 1.0, 0.0),
         defocus_angle: 0.6,
         focus_distance: 10.0,
-        samples_per_pixel: 100,
-        max_bounces: 10,
+        samples_per_pixel: 500,
+        max_bounces: 50,
     };
 
     let mut outfile: Box<dyn Write>;
