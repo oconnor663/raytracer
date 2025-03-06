@@ -336,7 +336,7 @@ impl Material {
                 let sin_theta = (1.0 - cos_theta * cos_theta).sqrt();
                 let cannot_refract = ri * sin_theta > 1.0;
                 let orig = hit.point;
-                let dir = if cannot_refract {
+                let dir = if cannot_refract || reflectance(cos_theta, ri) > rand::random() {
                     unit_direction.reflect(hit.normal)
                 } else {
                     unit_direction.refract(hit.normal, ri)
@@ -345,6 +345,13 @@ impl Material {
             }
         }
     }
+}
+
+fn reflectance(cos: f64, ri: f64) -> f64 {
+    // Use Schlick's approximation for reflectance.
+    let mut r0 = (1.0 - ri) / (1.0 + ri);
+    r0 *= r0;
+    r0 + (1.0 - r0) * (1.0 - cos).powi(5)
 }
 
 struct World {
