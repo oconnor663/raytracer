@@ -1,4 +1,6 @@
 use clap::Parser;
+use rand::Rng;
+use rand::SeedableRng;
 use rayon::prelude::*;
 use riddance::Registry;
 use std::fmt;
@@ -597,7 +599,7 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let camera = Camera {
-        image_width: 1200,
+        image_width: 3840,
         aspect_ratio: 16.0 / 9.0,
         vfov: 20.0,
         lookfrom: Point::new(13.0, 2.0, -3.0),
@@ -638,15 +640,16 @@ fn main() -> anyhow::Result<()> {
     }));
 
     // lots of little spheres
+    let mut sphere_rng = rand_chacha::ChaCha8Rng::seed_from_u64(4);
     for a in -11..11 {
         for b in -11..11 {
             let center = Point::new(
-                a as f64 + 0.9 * rand::random::<f64>(),
+                a as f64 + 0.9 * sphere_rng.random::<f64>(),
                 0.2,
-                b as f64 + 0.9 * rand::random::<f64>(),
+                b as f64 + 0.9 * sphere_rng.random::<f64>(),
             );
             if (center - Point::new(4.0, 0.2, 0.0)).length() > 0.9 {
-                match rand::random() {
+                match sphere_rng.random() {
                     0.0..0.8 => {
                         // diffuse
                         _ = world.hittables.insert(Hittable::Sphere(Sphere {
@@ -663,7 +666,7 @@ fn main() -> anyhow::Result<()> {
                             radius: 0.2,
                             attenuation: Color::random_range(0.5..1.0),
                             material: Material::Metal {
-                                fuzz: rand::random_range(0.0..0.5),
+                                fuzz: sphere_rng.random_range(0.0..0.5),
                             },
                         }));
                     }
