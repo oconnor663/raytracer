@@ -77,22 +77,6 @@ impl Vec3 {
             z: self.z * rhs.z,
         }
     }
-
-    fn random() -> Self {
-        Self {
-            x: rand::random(),
-            y: rand::random(),
-            z: rand::random(),
-        }
-    }
-
-    fn random_range(range: impl rand::distr::uniform::SampleRange<f64> + Clone) -> Self {
-        Self {
-            x: rand::random_range(range.clone()),
-            y: rand::random_range(range.clone()),
-            z: rand::random_range(range),
-        }
-    }
 }
 
 impl Add for Vec3 {
@@ -640,7 +624,7 @@ fn main() -> anyhow::Result<()> {
     }));
 
     // lots of little spheres
-    let mut sphere_rng = rand_chacha::ChaCha8Rng::seed_from_u64(4);
+    let mut sphere_rng = rand_chacha::ChaCha8Rng::seed_from_u64(6);
     for a in -11..11 {
         for b in -11..11 {
             let center = Point::new(
@@ -655,7 +639,11 @@ fn main() -> anyhow::Result<()> {
                         _ = world.hittables.insert(Hittable::Sphere(Sphere {
                             center,
                             radius: 0.2,
-                            attenuation: Color::random().elementwise_mul(Color::random()),
+                            attenuation: Color {
+                                x: sphere_rng.random(),
+                                y: sphere_rng.random(),
+                                z: sphere_rng.random(),
+                            },
                             material: Material::Lambertian,
                         }));
                     }
@@ -664,7 +652,11 @@ fn main() -> anyhow::Result<()> {
                         _ = world.hittables.insert(Hittable::Sphere(Sphere {
                             center,
                             radius: 0.2,
-                            attenuation: Color::random_range(0.5..1.0),
+                            attenuation: Color {
+                                x: sphere_rng.random_range(0.5..1.0),
+                                y: sphere_rng.random_range(0.5..1.0),
+                                z: sphere_rng.random_range(0.5..1.0),
+                            },
                             material: Material::Metal {
                                 fuzz: sphere_rng.random_range(0.0..0.5),
                             },
