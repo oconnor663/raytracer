@@ -217,6 +217,7 @@ struct HitRecord {
     from_outside: bool,
     material: Material,
     attenuation: Color,
+    glow: Color,
 }
 
 impl HitRecord {
@@ -227,6 +228,7 @@ impl HitRecord {
         outward_normal: Vec3,
         material: Material,
         attenuation: Color,
+        glow: Color,
     ) -> Self {
         debug_assert_eq!(
             outward_normal.length() as f32, // approximate
@@ -246,6 +248,7 @@ impl HitRecord {
             from_outside,
             material,
             attenuation,
+            glow,
         }
     }
 }
@@ -255,6 +258,7 @@ struct Sphere {
     radius: f64,
     attenuation: Color,
     material: Material,
+    glow: Color,
 }
 
 impl Sphere {
@@ -285,6 +289,7 @@ impl Sphere {
             outward_normal,
             self.material,
             self.attenuation,
+            self.glow,
         ))
     }
 }
@@ -523,36 +528,21 @@ fn ray_color(r: Ray, world: &World, remaining_bounces: u64) -> Color {
     }
     // 0.001 here fixes "shadow acne".
     if let Some(hit) = world.hit(r, Interval::new(0.001, f64::MAX)) {
-        if let Some(scatter) = hit.material.scatter(r, hit) {
-            let color = ray_color(scatter, world, remaining_bounces - 1);
-            return hit.attenuation.elementwise_mul(color);
+        let mut color = if let Some(scatter) = hit.material.scatter(r, hit) {
+            ray_color(scatter, world, remaining_bounces - 1)
         } else {
-            return Color::zero();
+            Color::zero()
+        };
+        color = hit.attenuation.elementwise_mul(color);
+        if hit.from_outside {
+            color.x = hit.glow.x + color.x * (1.0 - hit.glow.x);
+            color.y = hit.glow.y + color.y * (1.0 - hit.glow.y);
+            color.z = hit.glow.z + color.z * (1.0 - hit.glow.z);
         }
+        return color;
     }
-    // If we didn't hit anything, paint a rainbow sky.
-    let mut horiz_proj = r.dir;
-    horiz_proj.y = 0.0;
-    let mut angle = (horiz_proj.x / horiz_proj.length()).acos().to_degrees();
-    if r.dir.z > 0.0 {
-        angle = 360.0 - angle;
-    }
-    let (mut red, mut green, mut blue) = match angle {
-        0.0..120.0 => (120.0 - angle, angle, 0.0),
-        120.0..240.0 => (0.0, 240.0 - angle, angle - 120.0),
-        240.0..=360.0 => (angle - 240.0, 0.0, 360.0 - angle),
-        _ => unreachable!("{angle}"),
-    };
-    red /= 120.0;
-    green /= 120.0;
-    blue /= 120.0;
-    let unit_y = r.dir.unit_vector().y;
-    if unit_y > 0.0 {
-        red = red.max(unit_y * unit_y);
-        green = green.max(unit_y * unit_y);
-        blue = blue.max(unit_y * unit_y);
-    }
-    Color::new(red, green, blue)
+    // If we didn't hit anything, the sky is black.
+    Color::new(0.0, 0.0, 0.0)
 }
 
 fn linear_to_gamma(linear: f64) -> f64 {
@@ -583,13 +573,13 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     let camera = Camera {
-        image_width: 3840,
+        image_width: 2000,
         aspect_ratio: 16.0 / 9.0,
         vfov: 20.0,
         lookfrom: Point::new(13.0, 2.0, -3.0),
         lookat: Point::zero(),
         vup: Vec3::new(0.0, 1.0, 0.0),
-        defocus_angle: 0.3,
+        defocus_angle: 0.0,
         focus_distance: 10.0,
         samples_per_pixel: 500,
         max_bounces: 50,
@@ -621,6 +611,7 @@ fn main() -> anyhow::Result<()> {
         radius: 1000.0,
         attenuation: Color::new(0.5, 0.5, 0.5),
         material: Material::Lambertian,
+        glow: Color::zero(),
     }));
 
     // lots of little spheres
@@ -645,6 +636,7 @@ fn main() -> anyhow::Result<()> {
                                 z: sphere_rng.random(),
                             },
                             material: Material::Lambertian,
+                            glow: Color::zero(),
                         }));
                     }
                     0.8..0.95 => {
@@ -660,10 +652,14 @@ fn main() -> anyhow::Result<()> {
                             material: Material::Metal {
                                 fuzz: sphere_rng.random_range(0.0..0.5),
                             },
+                            glow: Color::zero(),
                         }));
                     }
                     _ => {
                         // glass
+                        let glow_red = sphere_rng.random();
+                        let glow_green = sphere_rng.random_range(0.0..glow_red);
+                        let glow_blue = sphere_rng.random_range(0.0..glow_green);
                         _ = world.hittables.insert(Hittable::Sphere(Sphere {
                             center,
                             radius: 0.2,
@@ -671,6 +667,7 @@ fn main() -> anyhow::Result<()> {
                             material: Material::Dielectric {
                                 refraction_index: 1.5,
                             },
+                            glow: Color::new(glow_red, glow_green, glow_blue),
                         }));
                     }
                 }
@@ -686,24 +683,29 @@ fn main() -> anyhow::Result<()> {
         material: Material::Dielectric {
             refraction_index: 1.5,
         },
+        glow: Color::zero(),
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(-4.0, 1.0, 0.0),
         radius: 1.0,
-        attenuation: Color::new(0.9, 0.9, 0.1),
+        attenuation: Color::new(0.7, 0.3, 0.1),
         material: Material::Lambertian,
+        // glow: Color::zero(),
+        glow: Color::new(0.7, 0.3, 0.1),
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(4.0, 1.0, 0.0),
         radius: 1.0,
         attenuation: Color::new(0.7, 0.6, 0.5),
         material: Material::Metal { fuzz: 0.0 },
+        glow: Color::zero(),
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(7.0, 4.0, -6.0),
         radius: 4.0,
         attenuation: Color::new(0.7, 0.6, 0.5),
         material: Material::Metal { fuzz: 0.0 },
+        glow: Color::new(0.5, 0.5, 0.5),
     }));
 
     camera.render(
