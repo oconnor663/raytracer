@@ -589,7 +589,7 @@ fn main() -> anyhow::Result<()> {
         lookfrom: Point::new(13.0, 2.0, -3.0),
         lookat: Point::zero(),
         vup: Vec3::new(0.0, 1.0, 0.0),
-        defocus_angle: 0.6,
+        defocus_angle: 0.3,
         focus_distance: 10.0,
         samples_per_pixel: 500,
         max_bounces: 50,
@@ -678,7 +678,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // three big spheres
+    // four big spheres
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(0.0, 1.0, 0.0),
         radius: 1.0,
@@ -696,6 +696,12 @@ fn main() -> anyhow::Result<()> {
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(4.0, 1.0, 0.0),
         radius: 1.0,
+        attenuation: Color::new(0.7, 0.6, 0.5),
+        material: Material::Metal { fuzz: 0.0 },
+    }));
+    _ = world.hittables.insert(Hittable::Sphere(Sphere {
+        center: Point::new(7.0, 4.0, -6.0),
+        radius: 4.0,
         attenuation: Color::new(0.7, 0.6, 0.5),
         material: Material::Metal { fuzz: 0.0 },
     }));
