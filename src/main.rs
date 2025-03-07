@@ -544,9 +544,29 @@ fn ray_color(r: Ray, world: &World, remaining_bounces: u64) -> Color {
             return Color::zero();
         }
     }
-    // If we didn't hit anything, paint the blue sky background.
-    let a = 0.5 * (r.dir.unit_vector().y + 1.0);
-    (1.0 - a) * Color::new(1.0, 1.0, 1.0) + a * Color::new(0.5, 0.7, 1.0)
+    // If we didn't hit anything, paint a rainbow sky.
+    let mut horiz_proj = r.dir;
+    horiz_proj.y = 0.0;
+    let mut angle = (horiz_proj.x / horiz_proj.length()).acos().to_degrees();
+    if r.dir.z > 0.0 {
+        angle = 360.0 - angle;
+    }
+    let (mut red, mut green, mut blue) = match angle {
+        0.0..120.0 => (120.0 - angle, angle, 0.0),
+        120.0..240.0 => (0.0, 240.0 - angle, angle - 120.0),
+        240.0..=360.0 => (angle - 240.0, 0.0, 360.0 - angle),
+        _ => unreachable!("{angle}"),
+    };
+    red /= 120.0;
+    green /= 120.0;
+    blue /= 120.0;
+    let unit_y = r.dir.unit_vector().y;
+    if unit_y > 0.0 {
+        red = red.max(unit_y * unit_y);
+        green = green.max(unit_y * unit_y);
+        blue = blue.max(unit_y * unit_y);
+    }
+    Color::new(red, green, blue)
 }
 
 fn linear_to_gamma(linear: f64) -> f64 {
@@ -580,7 +600,7 @@ fn main() -> anyhow::Result<()> {
         image_width: 1200,
         aspect_ratio: 16.0 / 9.0,
         vfov: 20.0,
-        lookfrom: Point::new(13.0, 2.0, 3.0),
+        lookfrom: Point::new(13.0, 2.0, -3.0),
         lookat: Point::zero(),
         vup: Vec3::new(0.0, 1.0, 0.0),
         defocus_angle: 0.6,
@@ -602,7 +622,7 @@ fn main() -> anyhow::Result<()> {
         );
         bar.set_style(
             indicatif::style::ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] {wide_bar} {percent:>2}%")?,
+                .template("[{elapsed_precise}] {wide_bar}{percent:>3}%")?,
         );
         progress_bar = Some(bar);
     };
@@ -675,7 +695,7 @@ fn main() -> anyhow::Result<()> {
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
         center: Point::new(-4.0, 1.0, 0.0),
         radius: 1.0,
-        attenuation: Color::new(0.4, 0.2, 0.1),
+        attenuation: Color::new(0.9, 0.9, 0.1),
         material: Material::Lambertian,
     }));
     _ = world.hittables.insert(Hittable::Sphere(Sphere {
